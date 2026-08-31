@@ -1,0 +1,30 @@
+vault:
+  global:
+    enabled: true
+    tlsDisable: true
+
+  # Habilitamos la interfaz web para administración inicial
+  ui:
+    enabled: true
+    serviceType: "ClusterIP" # Como es dev, lo exponemos internamente para hacer port-forward luego
+
+  server:
+    # TODO(Prod): Cambiar a High Availability (ha.enabled: true) con backend Raft o Consul.
+    standalone:
+      enabled: true
+      config: |
+        ui = true
+        
+        listener "tcp" {
+          tls_disable = 1
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+        }
+        
+        storage "file" {
+          path = "/vault/data"
+        }
+
+  # Deshabilitamos la inyección automática por ahora hasta inicializar la bóveda
+  injector:
+    enabled: false

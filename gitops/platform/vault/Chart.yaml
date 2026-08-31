@@ -1,0 +1,11 @@
+apiVersion: v2
+name: vault-config
+description: "Configuración declarativa para HashiCorp Vault en el Hub"
+type: application
+version: 1.0.0
+appVersion: "1.14.0"
+
+dependencies:
+  - name: vault
+    version: "0.25.0" # Versión recomendada estable del chart de Vault
+    repository: "https://helm.releases.hashicorp.com"

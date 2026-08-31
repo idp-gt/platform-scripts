@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps-base-workloads
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/idp-gt/platform-scripts.git
+        revision: main
+        directories:
+          - path: gitops/apps-base/*
+  template:
+    metadata:
+      name: '{{.path.basename}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/idp-gt/platform-scripts.git
+        targetRevision: main
+        path: '{{.path.path}}'
+      destination:
+        server: 'https://kubernetes.default.svc' # Este ApplicationSet apunta al clúster base (On-Prem o Cloud Base). Podríamos usar label selectors aquí.
+        namespace: '{{.path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
