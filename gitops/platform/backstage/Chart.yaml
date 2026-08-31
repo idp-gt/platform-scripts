@@ -1,0 +1,11 @@
+apiVersion: v2
+name: backstage-config
+description: "Configuración declarativa para Backstage IDP en el Hub"
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+dependencies:
+  - name: backstage
+    version: "1.7.2" # Versión recomendada estable
+    repository: "https://backstage.github.io/charts"

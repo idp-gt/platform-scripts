@@ -1,0 +1,39 @@
+backstage:
+  # Imagen por defecto para empezar (luego puedes usar una propia)
+  image:
+    repository: backstage/backstage
+    tag: latest
+
+  # Configuración del servicio (ClusterIP para Dev)
+  service:
+    type: ClusterIP
+    ports:
+      backend: 7007
+      targetPort: 7007
+
+  # Habilitamos PostgreSQL empaquetado para Dev
+  postgresql:
+    enabled: true
+    auth:
+      username: backstage
+      password: backstage_password
+      database: backstage_plugin
+    primary:
+      persistence:
+        enabled: true
+        size: 5Gi
+
+  appConfig:
+    app:
+      baseUrl: http://localhost:7007
+    backend:
+      baseUrl: http://localhost:7007
+      listen:
+        port: 7007
+      database:
+        client: pg
+        connection:
+          host: "${POSTGRES_HOST}"
+          port: "${POSTGRES_PORT}"
+          user: "${POSTGRES_USER}"
+          password: "${POSTGRES_PASSWORD}"
