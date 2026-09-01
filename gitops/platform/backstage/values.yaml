@@ -9,7 +9,7 @@ backstage:
     type: ClusterIP
     ports:
       backend: 7007
-      targetPort: 7007
+      targetPort: "7007"
 
   # Habilitamos PostgreSQL empaquetado para Dev
   postgresql:
