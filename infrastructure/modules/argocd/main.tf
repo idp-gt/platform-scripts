@@ -8,16 +8,50 @@ resource "helm_release" "argocd" {
   create_namespace = true
   version          = "6.7.11" # Versión recomendada y estable
 
-  # Configuraciones por defecto para ArgoCD en el Hub
-  set {
-    name  = "server.service.type"
-    value = "ClusterIP" # Se expone luego vía Ingress/Gateway API
-  }
+  values = [
+    <<EOF
+server:
+  service:
+    type: ClusterIP
 
-  set {
-    name  = "configs.params.server\\.insecure"
-    value = "true" # Si el TLS termina en el Ingress
-  }
+configs:
+  params:
+    server.insecure: false
+
+# Habilitar métricas para Prometheus / Grafana Alloy
+controller:
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+
+server:
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8083"
+
+repoServer:
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8084"
+
+applicationSet:
+  metrics:
+    enabled: true
+
+notifications:
+  metrics:
+    enabled: true
+EOF
+  ]
 }
 
 resource "helm_release" "argocd_apps" {

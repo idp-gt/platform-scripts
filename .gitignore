@@ -7,6 +7,12 @@ secrets.yaml
 !.env.example
 !secrets.yaml.example
 
+# Scripts y notas locales con tokens/contraseñas
+deploy_steps.sh
+step1_GKE.sh
+*.excalidraw
+*.png
+
 # Terragrunt
 .terragrunt-cache/
 **/.terragrunt-cache/
