@@ -1,0 +1,29 @@
+# Archivos de secretos y credenciales locales
+secrets.yaml
+**/secrets.yaml
+*.env
+.env
+.env.*
+!.env.example
+!secrets.yaml.example
+
+# Terragrunt
+.terragrunt-cache/
+**/.terragrunt-cache/
+
+# Terraform
+.terraform/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.example.tfvars
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Mac OS
+.DS_Store
+

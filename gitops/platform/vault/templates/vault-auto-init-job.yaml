@@ -1,0 +1,140 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-init-sa
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-init-role
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-init-rb
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: vault-init-sa
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: vault-init-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-auto-bootstrap
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      name: vault-auto-bootstrap
+    spec:
+      serviceAccountName: vault-init-sa
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: bitnami/kubectl:latest
+          env:
+            - name: VAULT_ADDR
+              value: "http://vault.{{ .Release.Namespace }}.svc.cluster.local:8200"
+            - name: PROMETHEUS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-seed
+                  key: prometheus_url
+                  optional: true
+            - name: PROMETHEUS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-seed
+                  key: prometheus_user
+                  optional: true
+            - name: PROMETHEUS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-seed
+                  key: prometheus_token
+                  optional: true
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "==> Esperando respuesta del servicio de Vault ($VAULT_ADDR)..."
+              until curl -s "$VAULT_ADDR/v1/sys/health" > /dev/null 2>&1 || [ $? -eq 22 ] || [ $? -eq 0 ]; do
+                echo "Vault no responde aún, esperando 3 segundos..."
+                sleep 3
+              done
+
+              STATUS_RES=$(curl -s "$VAULT_ADDR/v1/sys/health" || true)
+              IS_INIT=$(echo "$STATUS_RES" | grep -o '"initialized":[a-z]*' | cut -d: -f2)
+
+              if [ "$IS_INIT" = "false" ]; then
+                echo "==> Vault no está inicializado. Ejecutando inicialización..."
+                INIT_RES=$(curl -s -X POST "$VAULT_ADDR/v1/sys/init" -d '{"secret_shares":1,"secret_threshold":1}')
+                UNSEAL_KEY=$(echo "$INIT_RES" | grep -o '"keys_base64":\["[^"]*"' | cut -d'"' -f4)
+                ROOT_TOKEN=$(echo "$INIT_RES" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4)
+
+                echo "==> Guardando credenciales de unseal en Kubernetes Secret 'vault-unseal-keys'..."
+                kubectl create secret generic vault-unseal-keys -n {{ .Release.Namespace }} \
+                  --from-literal=unseal_key="$UNSEAL_KEY" \
+                  --from-literal=root_token="$ROOT_TOKEN" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+
+                echo "==> Desbloqueando Vault (unseal)..."
+                curl -s -X POST "$VAULT_ADDR/v1/sys/unseal" -d "{\"key\":\"$UNSEAL_KEY\"}" > /dev/null
+              else
+                echo "==> Vault ya está inicializado."
+                IS_SEALED=$(echo "$STATUS_RES" | grep -o '"sealed":[a-z]*' | cut -d: -f2)
+                if [ "$IS_SEALED" = "true" ]; then
+                  echo "==> Vault está sellado. Obteniendo unseal_key de Kubernetes Secret..."
+                  UNSEAL_KEY=$(kubectl get secret vault-unseal-keys -n {{ .Release.Namespace }} -o jsonpath='{.data.unseal_key}' | base64 -d)
+                  curl -s -X POST "$VAULT_ADDR/v1/sys/unseal" -d "{\"key\":\"$UNSEAL_KEY\"}" > /dev/null
+                  echo "==> Vault desbloqueado."
+                fi
+                ROOT_TOKEN=$(kubectl get secret vault-unseal-keys -n {{ .Release.Namespace }} -o jsonpath='{.data.root_token}' | base64 -d)
+              fi
+
+              sleep 2
+
+              echo "==> Habilitando Secrets Engine KV v2 en 'secret/'..."
+              curl -s -H "X-Vault-Token: $ROOT_TOKEN" -X POST "$VAULT_ADDR/v1/sys/mounts/secret" -d '{"type":"kv","options":{"version":"2"}}' > /dev/null || true
+
+              if [ -n "$PROMETHEUS_TOKEN" ]; then
+                echo "==> Guardando credenciales de Grafana Cloud en 'secret/grafana-cloud'..."
+                curl -s -H "X-Vault-Token: $ROOT_TOKEN" -X POST "$VAULT_ADDR/v1/secret/data/grafana-cloud" \
+                  -d "{\"data\":{\"prometheus_url\":\"$PROMETHEUS_URL\",\"prometheus_user\":\"$PROMETHEUS_USER\",\"prometheus_token\":\"$PROMETHEUS_TOKEN\"}}" > /dev/null
+                echo "==> Secreto de Grafana Cloud guardado correctamente en Vault."
+              else
+                echo "[-] No se encontró seed secret de Grafana Cloud, omitiendo seed."
+              fi
+
+              echo "==> Habilitando y configurando Kubernetes Auth para External Secrets Operator..."
+              curl -s -H "X-Vault-Token: $ROOT_TOKEN" -X POST "$VAULT_ADDR/v1/sys/auth/kubernetes" -d '{"type":"kubernetes"}' > /dev/null || true
+              curl -s -H "X-Vault-Token: $ROOT_TOKEN" -X POST "$VAULT_ADDR/v1/auth/kubernetes/config" -d '{"kubernetes_host":"https://kubernetes.default.svc"}' > /dev/null
+
+              echo "==> Creando política 'eso-policy' en Vault..."
+              curl -s -H "X-Vault-Token: $ROOT_TOKEN" -X POST "$VAULT_ADDR/v1/sys/policies/acl/eso-policy" \
+                -d '{"policy":"path \"secret/data/*\" { capabilities = [\"read\"] }"}' > /dev/null
+
+              echo "==> Vinculando ServiceAccount 'external-secrets' con el rol 'eso-role'..."
+              curl -s -H "X-Vault-Token: $ROOT_TOKEN" -X POST "$VAULT_ADDR/v1/auth/kubernetes/role/eso-role" \
+                -d '{"bound_service_account_names":["external-secrets"],"bound_service_account_namespaces":["external-secrets"],"policies":["eso-policy"],"ttl":"24h"}' > /dev/null
+
+              echo "================================================="
+              echo "✅ Auto-bootstrap de Vault finalizado con éxito."
+              echo "================================================="
+
