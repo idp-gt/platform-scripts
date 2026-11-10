@@ -2,11 +2,20 @@
 # Google Cloud KMS para Auto-Unseal de HashiCorp Vault (Zero-Touch)
 # ==============================================================================
 
+# Habilitar la API de Cloud KMS en el proyecto de GCP
+resource "google_project_service" "kms" {
+  count              = var.enable_vault_kms ? 1 : 0
+  project            = var.project_id
+  service            = "cloudkms.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_kms_key_ring" "vault" {
-  count    = var.enable_vault_kms ? 1 : 0
-  name     = "${var.cluster_name}-vault-keyring"
-  location = var.region
-  project  = var.project_id
+  count      = var.enable_vault_kms ? 1 : 0
+  name       = "${var.cluster_name}-vault-keyring"
+  location   = var.region
+  project    = var.project_id
+  depends_on = [google_project_service.kms]
 }
 
 resource "google_kms_crypto_key" "vault_unseal" {
@@ -28,11 +37,19 @@ resource "google_service_account" "vault_kms" {
   project      = var.project_id
 }
 
-# Otorgar permisos a la SA sobre la llave KMS de GCP
+# Otorgar permisos de cifrado/descifrado a la SA sobre la llave KMS de GCP
 resource "google_kms_crypto_key_iam_member" "vault_kms" {
   count         = var.enable_vault_kms ? 1 : 0
   crypto_key_id = google_kms_crypto_key.vault_unseal[0].id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:${google_service_account.vault_kms[0].email}"
+}
+
+# Otorgar permisos de lectura (cloudkms.cryptoKeys.get) necesarios para que Vault verifique la llave
+resource "google_kms_crypto_key_iam_member" "vault_kms_viewer" {
+  count         = var.enable_vault_kms ? 1 : 0
+  crypto_key_id = google_kms_crypto_key.vault_unseal[0].id
+  role          = "roles/cloudkms.viewer"
   member        = "serviceAccount:${google_service_account.vault_kms[0].email}"
 }
 
