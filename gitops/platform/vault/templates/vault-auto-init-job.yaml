@@ -82,8 +82,9 @@ spec:
               IS_INIT=$(echo "$STATUS_RES" | grep -o '"initialized":[a-z]*' | cut -d: -f2)
 
               if [ "$IS_INIT" = "false" ]; then
-                echo "==> Vault no está inicializado. Ejecutando inicialización (Cloud KMS)..."
-                INIT_RES=$(curl -s -X POST "$VAULT_ADDR/v1/sys/init" -d '{"recovery_shares":1,"recovery_threshold":1,"secret_shares":1,"secret_threshold":1}')
+                echo "==> Vault no está inicializado. Ejecutando inicialización con Auto-Seal (Google Cloud KMS)..."
+                INIT_RES=$(curl -s -X POST "$VAULT_ADDR/v1/sys/init" -d '{"recovery_shares":1,"recovery_threshold":1}')
+                echo "Respuesta de init: $INIT_RES"
                 ROOT_TOKEN=$(echo "$INIT_RES" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4)
                 RECOVERY_KEY=$(echo "$INIT_RES" | grep -o '"recovery_keys_b64":\["[^"]*"' | cut -d'"' -f4 || true)
 
@@ -96,14 +97,7 @@ spec:
                 echo "==> Vault inicializado y auto-desbloqueado con Google Cloud KMS."
               else
                 echo "==> Vault ya está inicializado."
-                IS_SEALED=$(echo "$STATUS_RES" | grep -o '"sealed":[a-z]*' | cut -d: -f2)
-                if [ "$IS_SEALED" = "true" ]; then
-                  echo "==> Vault está sellado. Obteniendo unseal_key de Kubernetes Secret..."
-                  UNSEAL_KEY=$(kubectl get secret vault-unseal-keys -n {{ .Release.Namespace }} -o jsonpath='{.data.unseal_key}' | base64 -d)
-                  curl -s -X POST "$VAULT_ADDR/v1/sys/unseal" -d "{\"key\":\"$UNSEAL_KEY\"}" > /dev/null
-                  echo "==> Vault desbloqueado."
-                fi
-                ROOT_TOKEN=$(kubectl get secret vault-unseal-keys -n {{ .Release.Namespace }} -o jsonpath='{.data.root_token}' | base64 -d)
+                ROOT_TOKEN=$(kubectl get secret vault-unseal-keys -n {{ .Release.Namespace }} -o jsonpath='{.data.root_token}' | base64 -d 2>/dev/null || true)
               fi
 
               sleep 2
