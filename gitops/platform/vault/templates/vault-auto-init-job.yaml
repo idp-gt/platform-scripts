@@ -135,7 +135,7 @@ spec:
 
               echo "==> Vinculando ServiceAccount 'external-secrets' con el rol 'eso-role'..."
               curl -s -H "X-Vault-Token: $ROOT_TOKEN" -X POST "$VAULT_ADDR/v1/auth/kubernetes/role/eso-role" \
-                -d '{"bound_service_account_names":["external-secrets"],"bound_service_account_namespaces":["external-secrets"],"policies":["eso-policy"],"ttl":"24h"}' > /dev/null
+                -d '{"bound_service_account_names":["*"],"bound_service_account_namespaces":["external-secrets"],"policies":["eso-policy"],"ttl":"24h"}' > /dev/null
 
               echo "================================================="
               echo "✅ Auto-bootstrap de Vault finalizado con éxito."
