@@ -31,6 +31,9 @@ kind: Job
 metadata:
   name: vault-auto-bootstrap
   namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   ttlSecondsAfterFinished: 600
   backoffLimit: 5
