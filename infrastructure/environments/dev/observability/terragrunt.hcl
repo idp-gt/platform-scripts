@@ -44,15 +44,8 @@ provider "kubernetes" {
 EOF
 }
 
-locals {
-  secrets_file = find_in_parent_folders("secrets.yaml", "secrets.notfound")
-  secrets      = fileexists(local.secrets_file) ? yamldecode(file(local.secrets_file)) : {}
-}
-
 inputs = {
-  project_id                     = "idp-architect"
-  namespace                      = "grafana-observability"
-  grafana_cloud_prometheus_url   = try(local.secrets.grafana_cloud_prometheus_url, get_env("GRAFANA_CLOUD_PROMETHEUS_URL", "https://prometheus-prod-XX.grafana.net/api/prom/push"))
-  grafana_cloud_prometheus_user  = try(tostring(local.secrets.grafana_cloud_prometheus_user), get_env("GRAFANA_CLOUD_PROMETHEUS_USER", "123456"))
-  grafana_cloud_prometheus_token = try(local.secrets.grafana_cloud_prometheus_token, get_env("GRAFANA_CLOUD_PROMETHEUS_TOKEN", "placeholder_token"))
+  project_id                   = "idp-architect"
+  namespace                    = "grafana-observability"
+  grafana_cloud_prometheus_url = get_env("GRAFANA_CLOUD_PROMETHEUS_URL", "https://prometheus-prod-XX.grafana.net/api/prom/push")
 }

@@ -5,27 +5,25 @@ metadata:
   namespace: {{ .Release.Namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  name: vault-init-role
-  namespace: {{ .Release.Namespace }}
+  name: vault-init-cluster-role
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: vault-init-rb
-  namespace: {{ .Release.Namespace }}
+  name: vault-init-crb
 subjects:
   - kind: ServiceAccount
     name: vault-init-sa
     namespace: {{ .Release.Namespace }}
 roleRef:
-  kind: Role
-  name: vault-init-role
+  kind: ClusterRole
+  name: vault-init-cluster-role
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: batch/v1
@@ -33,10 +31,8 @@ kind: Job
 metadata:
   name: vault-auto-bootstrap
   namespace: {{ .Release.Namespace }}
-  annotations:
-    argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
+  ttlSecondsAfterFinished: 600
   backoffLimit: 5
   template:
     metadata:
@@ -113,13 +109,20 @@ spec:
               echo "==> Habilitando Secrets Engine KV v2 en 'secret/'..."
               curl -s -H "X-Vault-Token: $ROOT_TOKEN" -X POST "$VAULT_ADDR/v1/sys/mounts/secret" -d '{"type":"kv","options":{"version":"2"}}' > /dev/null || true
 
+              if [ -z "$PROMETHEUS_TOKEN" ]; then
+                echo "==> Buscando credenciales en namespace grafana-observability..."
+                PROMETHEUS_URL=$(kubectl get secret grafana-cloud-credentials -n grafana-observability -o jsonpath='{.data.GRAFANA_CLOUD_PROMETHEUS_URL}' 2>/dev/null | base64 -d || true)
+                PROMETHEUS_USER=$(kubectl get secret grafana-cloud-credentials -n grafana-observability -o jsonpath='{.data.GRAFANA_CLOUD_PROMETHEUS_USER}' 2>/dev/null | base64 -d || true)
+                PROMETHEUS_TOKEN=$(kubectl get secret grafana-cloud-credentials -n grafana-observability -o jsonpath='{.data.GRAFANA_CLOUD_PROMETHEUS_TOKEN}' 2>/dev/null | base64 -d || true)
+              fi
+
               if [ -n "$PROMETHEUS_TOKEN" ]; then
                 echo "==> Guardando credenciales de Grafana Cloud en 'secret/grafana-cloud'..."
                 curl -s -H "X-Vault-Token: $ROOT_TOKEN" -X POST "$VAULT_ADDR/v1/secret/data/grafana-cloud" \
                   -d "{\"data\":{\"prometheus_url\":\"$PROMETHEUS_URL\",\"prometheus_user\":\"$PROMETHEUS_USER\",\"prometheus_token\":\"$PROMETHEUS_TOKEN\"}}" > /dev/null
                 echo "==> Secreto de Grafana Cloud guardado correctamente en Vault."
               else
-                echo "[-] No se encontró seed secret de Grafana Cloud, omitiendo seed."
+                echo "[-] No se encontraron credenciales de Grafana Cloud, omitiendo seed."
               fi
 
               echo "==> Habilitando y configurando Kubernetes Auth para External Secrets Operator..."

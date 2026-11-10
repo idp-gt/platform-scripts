@@ -98,17 +98,3 @@ alloy:
 EOF
   ]
 }
-
-# Seed Secret para que el Job de Auto-Bootstrap de Vault cargue las credenciales de Grafana Cloud
-resource "kubernetes_secret" "grafana_seed" {
-  metadata {
-    name      = "grafana-cloud-seed"
-    namespace = "vault"
-  }
-
-  data = {
-    prometheus_url   = var.grafana_cloud_prometheus_url
-    prometheus_user  = var.grafana_cloud_prometheus_user
-    prometheus_token = var.grafana_cloud_prometheus_token
-  }
-}
