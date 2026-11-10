@@ -78,3 +78,9 @@ variable "cluster_node_locations" {
   type        = list(string)
   default     = []
 }
+
+variable "enable_vault_kms" {
+  description = "Habilitar Google Cloud KMS para Auto-Unseal de HashiCorp Vault"
+  type        = bool
+  default     = false
+}

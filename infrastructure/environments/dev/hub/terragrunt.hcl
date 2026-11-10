@@ -24,6 +24,9 @@ inputs = {
   # El Hub NO escala a cero (aloja ArgoCD, Vault, IDP)
   enable_nap = false
 
+  # Habilitar Google Cloud KMS para Auto-Unseal de Vault
+  enable_vault_kms = true
+
   node_pools = [
     {
       name         = "platform-pool"

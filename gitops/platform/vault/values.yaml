@@ -9,6 +9,13 @@ vault:
     serviceType: "ClusterIP" # Como es dev, lo exponemos internamente para hacer port-forward luego
 
   server:
+    # ServiceAccount con Workload Identity para Cloud KMS Auto-Unseal
+    serviceAccount:
+      create: true
+      name: "vault"
+      annotations:
+        iam.gke.io/gcp-service-account: "vault-kms-gke-hub-cluster@idp-architect.iam.gserviceaccount.com"
+
     # TODO(Prod): Cambiar a High Availability (ha.enabled: true) con backend Raft o Consul.
     standalone:
       enabled: true
@@ -24,6 +31,19 @@ vault:
         storage "file" {
           path = "/vault/data"
         }
+
+        # Auto-Unseal automático con Google Cloud KMS (Zero-Touch)
+        seal "gcpckms" {
+          project     = "idp-architect"
+          region      = "us-central1"
+          key_ring    = "gke-hub-cluster-vault-keyring"
+          crypto_key  = "vault-unseal-key"
+        }
+
+    dataStorage:
+      enabled: true
+      size: 10Gi
+      mountPath: "/vault/data"
 
   # Deshabilitamos la inyección automática por ahora hasta inicializar la bóveda
   injector:
